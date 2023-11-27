@@ -35,6 +35,7 @@ struct ControlDataPacket {
 // Drive data packet structure
 struct DriveDataPacket {
   unsigned long time;                                 // time packet sent
+  bool pickingup;
 };
 
 // Constants
@@ -45,7 +46,7 @@ const long cDebounceDelay = 20;                       // button debounce delay i
 const int cMaxDroppedPackets = 20;                    // maximum number of packets allowed to drop
 const int cPotPin = 34;                               // potentiometer pin
 const int cMaxChange = 14;                            // maximum increment in counts/cycle
-const int cObjectLED = 25;                            // pin for colour detector LED
+const int cPickupLED = 25;                            // pin for colour detector LED
 
 // Variables
 unsigned long lastHeartbeat = 0;                      // time of last heartbeat state change
@@ -73,7 +74,7 @@ void setup() {
   // Configure GPIO
   pinMode(cHeartbeatLED, OUTPUT);                     // configure built-in LED for heartbeat as output
   pinMode(cStatusLED, OUTPUT);                        // configure GPIO for communication status LED as output
-  pinMode(cObjectLED, OUTPUT);                        // colour LED config
+  pinMode(cPickupLED, OUTPUT);                        // colour LED config
   pinMode(buttonFwd.pin, INPUT_PULLUP);               // configure GPIO for forward button pin as an input with pullup resistor
   attachInterruptArg(buttonFwd.pin, buttonISR, &buttonFwd, CHANGE); // Configure forward pushbutton ISR to trigger on change
   pinMode(buttonRev.pin, INPUT_PULLUP);               // configure GPIO for reverse button pin as an input with pullup resistor
@@ -162,11 +163,15 @@ void loop() {
     }
     if (!buttonScan.state){
       controlData.sortpickup = true;
-      digitalWrite(cObjectLED, true);
     }
     else{
       controlData.sortpickup = false;
-      digitalWrite(cObjectLED, false);
+    }
+    if (driveData.pickingup){
+      digitalWrite(cPickupLED, true);
+    }
+    else{
+      digitalWrite(cPickupLED, false);
     }
     // if drive appears disconnected, update control signal to stop before sending
     if (commsLossCount > cMaxDroppedPackets) {
