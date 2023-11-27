@@ -285,7 +285,7 @@ void loop() {
 
   // Sorting initialization process. Determines what the object is if there is one and returns information accordingly.
 
-    if (inData.sortpickup && !pickup) {                                       // when button is pressed and it is not in a pickup process
+    if (!inData.sortpickup && !pickup) {                                       // when button is pressed and it is not in a pickup process
       driveData.pickingup == true;
       ledcWrite(ci_ServoGrip, degreesToDutyCycle(i_ServoGripFinish));         // close the gripper
       i_ServoGripPos = i_ServoGripFinish;                                     // update position
