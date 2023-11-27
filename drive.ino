@@ -30,6 +30,7 @@ struct ControlDataPacket {
 // Drive data packet structure
 struct DriveDataPacket {
   unsigned long time;                                 // time packet sent
+  bool pickingup;
 };
 
 // Encoder structure
@@ -285,6 +286,7 @@ void loop() {
   // Sorting initialization process. Determines what the object is if there is one and returns information accordingly.
 
     if (inData.sortpickup && !pickup) {                                       // when button is pressed and it is not in a pickup process
+      driveData.pickingup == true;
       ledcWrite(ci_ServoGrip, degreesToDutyCycle(i_ServoGripFinish));         // close the gripper
       i_ServoGripPos = i_ServoGripFinish;                                     // update position
       delay(1000);                                                            // allow some time for the gripper to settle
@@ -301,12 +303,14 @@ void loop() {
       else {                                                                  // if little to no difference, open the gripper again
         ledcWrite(ci_ServoGrip, degreesToDutyCycle(i_ServoGripStart));
         i_ServoGripPos = i_ServoGripStart;
+        driveData.pickingup == false;
       }
       Serial.printf("Ambient: %d, Scanned: %d\n", totalAmb, scanned);         // Outputs information to serial monitor regarding ambient and scanned values
     }
 
     // Pickup process for a good object (the clear green rock)
-    if (pickup && goodobj){                                                   // if pickup and goodobj are both true                  
+    if (pickup && goodobj){                                                   // if pickup and goodobj are both true
+      driveData.pickingup == true;                  
       switch(ui_State) {                                                      // begin switch statemen
         case 0: {                                                             // case 0: close the gripper
           ul_CurMillis = millis();
@@ -363,6 +367,7 @@ void loop() {
               pickup = false;
               badobj = false;
               goodobj = false;
+              driveData.pickingup == false;
             }
           }
           break;
@@ -372,6 +377,7 @@ void loop() {
     }
     // Pickup process for a bad object (white rock)
     if (pickup && badobj){
+      driveData.pickingup == true;
       switch(ui_State) {
         case 0: {                                                             // case 0: close the gripper, same as good object process
           ul_CurMillis = millis();
@@ -428,6 +434,7 @@ void loop() {
               pickup = false;
               badobj = false;
               goodobj = false;
+              driveData.pickingup == false;
             }
           }
           break;
