@@ -162,12 +162,12 @@ void loop() {
       }
     }
     if (!buttonScan.state){
-      controlData.sortpickup = true;
+      controlData.sortpickup = 0;
     }
     else{
-      controlData.sortpickup = false;
+      controlData.sortpickup = 1;
     }
-    if (driveData.pickingup){
+    if (inData.pickingup){
       digitalWrite(cPickupLED, true);
     }
     else{
