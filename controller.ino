@@ -162,10 +162,10 @@ void loop() {
       }
     }
     if (!buttonScan.state){
-      controlData.sortpickup = 0;
+      controlData.sortpickup = true;
     }
     else{
-      controlData.sortpickup = 1;
+      controlData.sortpickup = false;
     }
     if (inData.pickingup){
       digitalWrite(cPickupLED, true);
@@ -173,6 +173,8 @@ void loop() {
     else{
       digitalWrite(cPickupLED, false);
     }
+    
+    Serial.println(inData.pickingup);
     // if drive appears disconnected, update control signal to stop before sending
     if (commsLossCount > cMaxDroppedPackets) {
       controlData.leftDir = 0;
