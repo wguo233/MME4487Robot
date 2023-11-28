@@ -292,11 +292,14 @@ void loop() {
     if (totalAmb == 0 && i_ServoArmPos == 180) {                                                      // only on the first iteration because totalAmb is initialized as 0
       ledcWrite(ci_ServoGrip, degreesToDutyCycle(i_ServoGripFinish));         // close the gripper
       i_ServoGripPos = i_ServoGripFinish;                                     // update position
-      delay(1000);                                                            // allow some time for the gripper to settle
-      tcs.getRawData(&r, &g, &b, &c);                                         // read R,G,B,C
-      totalAmb = r + g + b;                                                   // totalAmb is summed from r,g,b
-      ledcWrite(ci_ServoGrip, degreesToDutyCycle(i_ServoGripStart));          // open the gripper
-      i_ServoGripPos = i_ServoGripStart;                                      // update position
+      ul_CurMillis = millis();
+      if (ul_CurMillis - ul_PrevMillis > 1000){                   // uses ul_GripDelay to limit the servo rotation
+        ul_PrevMillis = ul_CurMillis;
+        tcs.getRawData(&r, &g, &b, &c);                                         // read R,G,B,C
+        totalAmb = r + g + b;                                                   // totalAmb is summed from r,g,b
+        ledcWrite(ci_ServoGrip, degreesToDutyCycle(i_ServoGripStart));          // open the gripper
+        i_ServoGripPos = i_ServoGripStart;                                      // update position
+      }
     }
 
 
@@ -310,17 +313,17 @@ void loop() {
       int scanned = r + g + b;                                                // scanned is the summation of the read values
       if (abs(scanned - totalAmb) > 1) {                                     // if the difference between scanned and totalAmb is greater than 10, an object is considered to be present
         pickup = true;                                                        // set pickup flag to true
-        if (scanned > 11) {                                                   // if scanned object summation is larger than 50 (the white rock), consider it as a bad object
-          badobj = true;                                                      
+        if (3 <= r && r <= 8 && 4 <= g && g <= 10 && 4 <= b && b <= 9){                                          // if scanned object summation is larger than 50 (the white rock), consider it as a bad object
+          goodobj = true;                                                      
         } else {                                                              // otherwise it is likely the green object as it has a low summation value
-          goodobj = true;
+          badobj = true;
         }
       }
       else {                                                                  // if little to no difference, open the gripper again
         ledcWrite(ci_ServoGrip, degreesToDutyCycle(i_ServoGripStart));
         i_ServoGripPos = i_ServoGripStart;
       }
-      Serial.printf("Ambient: %d, Scanned: %d\n", totalAmb, scanned);         // Outputs information to serial monitor regarding ambient and scanned values
+      Serial.printf("Ambient: %d, Scanned: %d, R: %d, G: %d, B: %d\n", totalAmb, scanned, r, g, b);         // Outputs information to serial monitor regarding ambient and scanned values
     }
 
     // Pickup process for a good object (the clear green rock)
