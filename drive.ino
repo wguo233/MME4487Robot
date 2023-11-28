@@ -86,7 +86,7 @@ bool pickup = false;                                 // boolean for whether pick
 bool badobj = false;                                 // bad object flag
 bool goodobj = false;                                // good object flag
 int totalAmb = 0;                                    // ambient light from colour sensor
-int runTime = 0;
+bool runState = 0;
 ControlDataPacket inData;                             // control data packet from controller
 DriveDataPacket driveData;                            // data packet to send controller
 
@@ -95,7 +95,8 @@ int i_ServoArmStart = 180;
 int i_ServoArmFinish = 25;
 int i_ServoGripStart = 75;
 int i_ServoGripFinish = 170;
-int i_ServoArmPos = i_ServoArmStart;                                     
+int i_ServoArmInitial = 65;
+int i_ServoArmPos = i_ServoArmInitial;                                     
 int i_ServoGripPos = i_ServoGripStart;
 
 // TCS34725 colour sensor with 2.4 ms integration time and gain of 4
@@ -178,9 +179,18 @@ void setup() {
 
 void loop() {
   if (inData.onOff){
-    if (runTime == 0){
-      i_ServoArmPos = i_ServoArmStart;
-      ledcWrite(ci_ServoArm, degreesToDutyCycle(i_ServoArmPos));
+    if (runState == 0){
+      ul_CurMillis = millis();
+      if (ul_CurMillis - ul_PrevMillis > ul_ArmDelay){
+        ul_PrevMillis = ul_CurMillis;
+        if (i_ServoArmPos < i_ServoArmStart){
+          ledcWrite(ci_ServoArm, degreesToDutyCycle(i_ServoArmPos));
+          i_ServoArmPos++;
+        }
+        if (i_ServoArmPos >= i_ServoArmStart){
+          runState = 1;
+        }
+      }
     }
     float deltaT = 0;                                   // time interval
     long pos[] = {0, 0};                                // current motor positions
@@ -279,7 +289,7 @@ void loop() {
 
       uint16_t r, g, b, c;                                // RGBC values from TCS34725
     // Calibration process. Determines the ambient light when the colour detector is not viewing any object. Only happens once.
-    if (totalAmb == 0) {                                                      // only on the first iteration because totalAmb is initialized as 0
+    if (totalAmb == 0 && i_ServoArmPos == 180) {                                                      // only on the first iteration because totalAmb is initialized as 0
       ledcWrite(ci_ServoGrip, degreesToDutyCycle(i_ServoGripFinish));         // close the gripper
       i_ServoGripPos = i_ServoGripFinish;                                     // update position
       delay(1000);                                                            // allow some time for the gripper to settle
@@ -446,12 +456,17 @@ void loop() {
         }
       }
     }
-    runTime++;
   }
   else{
-    i_ServoArmPos = 70;
-    ledcWrite(ci_ServoArm, degreesToDutyCycle(i_ServoArmPos));
-    runTime = 0;
+    ul_CurMillis = millis();
+    if (ul_CurMillis - ul_PrevMillis > ul_ArmDelay){
+      ul_PrevMillis = ul_CurMillis;
+      if (i_ServoArmPos > 55){
+        ledcWrite(ci_ServoArm, degreesToDutyCycle(i_ServoArmPos));
+        i_ServoArmPos--;
+      }
+    }
+    runState = 0;
   }
   doHeartbeat();                                      // update heartbeat LED
 }
