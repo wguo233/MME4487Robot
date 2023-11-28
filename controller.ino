@@ -30,6 +30,7 @@ struct ControlDataPacket {
   unsigned long time;                                 // time packet sent
   int speed;
   bool sortpickup;
+  bool onOff;
 };
 
 // Drive data packet structure
@@ -41,12 +42,13 @@ struct DriveDataPacket {
 // Constants
 const int cHeartbeatLED = 2;                          // GPIO pin of built-in LED for heartbeat
 const int cHeartbeatInterval = 500;                   // heartbeat blink interval, in milliseconds
-const int cStatusLED = 26;                            // GPIO pin of communication status LED
+const int cStatusLED = 15;                            // GPIO pin of communication status LED
 const long cDebounceDelay = 20;                       // button debounce delay in milliseconds
 const int cMaxDroppedPackets = 20;                    // maximum number of packets allowed to drop
 const int cPotPin = 34;                               // potentiometer pin
 const int cMaxChange = 14;                            // maximum increment in counts/cycle
 const int cPickupLED = 25;                            // pin for colour detector LED
+const int cStateLED = 33;
 
 // Variables
 unsigned long lastHeartbeat = 0;                      // time of last heartbeat state change
@@ -57,6 +59,8 @@ Button buttonRev = {12, 0, 0, false, true, true};     // reverse, NO pushbutton 
 Button buttonLeft = {27, 0, 0, false, true, true};    // left button
 Button buttonRight = {13, 0, 0, false, true, true};   // right button
 Button buttonScan = {26, 0, 0, false, true, true};   // NO pushbutton on GPIO 13, low state when pressed. Used to inititate sorting
+Button buttonState = {32, 0, 0, false, true, true};   
+int pressTime = 0;
 
 // REPLACE WITH MAC ADDRESS OF YOUR DRIVE ESP32
 uint8_t receiverMacAddress[] = {0xB0,0xA7,0x32,0x30,0x3B,0x98};  // MAC address of drive 00:01:02:03:04:05 
@@ -75,6 +79,7 @@ void setup() {
   pinMode(cHeartbeatLED, OUTPUT);                     // configure built-in LED for heartbeat as output
   pinMode(cStatusLED, OUTPUT);                        // configure GPIO for communication status LED as output
   pinMode(cPickupLED, OUTPUT);                        // colour LED config
+  pinMode(cStateLED, OUTPUT);
   pinMode(buttonFwd.pin, INPUT_PULLUP);               // configure GPIO for forward button pin as an input with pullup resistor
   attachInterruptArg(buttonFwd.pin, buttonISR, &buttonFwd, CHANGE); // Configure forward pushbutton ISR to trigger on change
   pinMode(buttonRev.pin, INPUT_PULLUP);               // configure GPIO for reverse button pin as an input with pullup resistor
@@ -85,6 +90,8 @@ void setup() {
   attachInterruptArg(buttonLeft.pin, buttonISR, &buttonLeft, CHANGE); // Configure left pushbutton ISR to trigger on change
   pinMode(buttonScan.pin, INPUT_PULLUP);               // configure GPIO for left button pin as an input with pullup resistor
   attachInterruptArg(buttonScan.pin, buttonISR, &buttonScan, CHANGE); // Configure left pushbutton ISR to trigger on change
+  pinMode(buttonState.pin, INPUT_PULLUP);               // configure GPIO for left button pin as an input with pullup resistor
+  attachInterruptArg(buttonState.pin, buttonISR, &buttonState, CHANGE); // Configure left pushbutton ISR to trigger on change
   pinMode(cPotPin, INPUT);                            // potentiometer input config
 
   // Initialize ESP-NOW
@@ -174,7 +181,22 @@ void loop() {
       digitalWrite(cPickupLED, false);
     }
     
-    Serial.println(inData.pickingup);
+    if (!buttonState.state){
+      if (pressTime == 0){
+        controlData.onOff = !controlData.onOff;
+      }
+      pressTime++;
+    }
+    else{
+      pressTime = 0;
+    }
+
+    if (controlData.onOff){
+      digitalWrite(cStateLED, true);
+    }
+    else{
+      digitalWrite(cStateLED, false);
+    }
     // if drive appears disconnected, update control signal to stop before sending
     if (commsLossCount > cMaxDroppedPackets) {
       controlData.leftDir = 0;
