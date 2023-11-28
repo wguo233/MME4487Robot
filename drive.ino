@@ -25,6 +25,7 @@ struct ControlDataPacket {
   unsigned long time;                                 // time packet sent
   int speed;
   bool sortpickup;
+  bool onOff;
 };
 
 // Drive data packet structure
@@ -85,12 +86,13 @@ bool pickup = false;                                 // boolean for whether pick
 bool badobj = false;                                 // bad object flag
 bool goodobj = false;                                // good object flag
 int totalAmb = 0;                                    // ambient light from colour sensor
+int runTime = 0;
 ControlDataPacket inData;                             // control data packet from controller
 DriveDataPacket driveData;                            // data packet to send controller
 
 // Servo motor desired degree positions. Adjust as observed if necessary
 int i_ServoArmStart = 180;
-int i_ServoArmFinish = 0;
+int i_ServoArmFinish = 25;
 int i_ServoGripStart = 75;
 int i_ServoGripFinish = 170;
 int i_ServoArmPos = i_ServoArmStart;                                     
@@ -175,269 +177,281 @@ void setup() {
 }
 
 void loop() {
-  float deltaT = 0;                                   // time interval
-  long pos[] = {0, 0};                                // current motor positions
-  float velEncoder[] = {0, 0};                        // motor velocity in counts/sec
-  float velMotor[] = {0, 0};                          // motor shaft velocity in rpm
-  float posChange[] = {0, 0};                         // change in position for set speed
-  long e[] = {0, 0};                                  // position error
-  float ePrev[] = {0, 0};                             // previous position error
-  float dedt[] = {0, 0};                              // rate of change of position error (de/dt)
-  float eIntegral[] = {0, 0};                         // integral of error
-  float u[] = {0, 0};                                 // PID control signal
-  int pwm[] = {0, 0};                                 // motor speed(s), represented in bit resolution
-  int dir[] = {1, 1};                                 // direction that motor should turn
- 
-  // if too many sequential packets have dropped, assume loss of controller, restart as safety measure
-   if (commsLossCount > cMaxDroppedPackets) {
-    delay(1000);                                      // okay to block here as nothing else should be happening
-    ESP.restart();                                    // restart ESP32
-  }
+  if (inData.onOff){
+    if (runTime == 0){
+      i_ServoArmPos = i_ServoArmStart;
+      ledcWrite(ci_ServoArm, degreesToDutyCycle(i_ServoArmPos));
+    }
+    float deltaT = 0;                                   // time interval
+    long pos[] = {0, 0};                                // current motor positions
+    float velEncoder[] = {0, 0};                        // motor velocity in counts/sec
+    float velMotor[] = {0, 0};                          // motor shaft velocity in rpm
+    float posChange[] = {0, 0};                         // change in position for set speed
+    long e[] = {0, 0};                                  // position error
+    float ePrev[] = {0, 0};                             // previous position error
+    float dedt[] = {0, 0};                              // rate of change of position error (de/dt)
+    float eIntegral[] = {0, 0};                         // integral of error
+    float u[] = {0, 0};                                 // PID control signal
+    int pwm[] = {0, 0};                                 // motor speed(s), represented in bit resolution
+    int dir[] = {1, 1};                                 // direction that motor should turn
+  
+    // if too many sequential packets have dropped, assume loss of controller, restart as safety measure
+    if (commsLossCount > cMaxDroppedPackets) {
+      delay(1000);                                      // okay to block here as nothing else should be happening
+      ESP.restart();                                    // restart ESP32
+    }
 
-  // store encoder positions to avoid conflicts with ISR updates
-  noInterrupts();                                     // disable interrupts temporarily while reading
-  for (int k = 0; k < cNumMotors; k++) {
-    pos[k] = encoder[k].pos;                          // read and store current motor position
-  }
-  interrupts();                                       // turn interrupts back on
-
-  unsigned long curTime = micros();                   // capture current time in microseconds
-  if (curTime - lastTime > 10000) {                   // wait ~10 ms
-    deltaT = ((float) (curTime - lastTime)) / 1.0e6;  // compute actual time interval in seconds
-    lastTime = curTime;                               // update start time for next control cycle
-    driveData.time = curTime;                         // update transmission time
+    // store encoder positions to avoid conflicts with ISR updates
+    noInterrupts();                                     // disable interrupts temporarily while reading
     for (int k = 0; k < cNumMotors; k++) {
-      velEncoder[k] = ((float) pos[k] - (float) lastEncoder[k]) / deltaT; // calculate velocity in counts/sec
-      lastEncoder[k] = pos[k];                        // store encoder count for next control cycle
-      velMotor[k] = velEncoder[k] / cCountsRev * 60;  // calculate motor shaft velocity in rpm
-
-      // update target for set direction
-      posChange[0] = (float) (inData.leftDir * inData.speed);   // update with maximum speed based on potentiometer and button
-      posChange[1] = (float) (inData.rightDir * inData.speed);  // update maximum speed based on potentiometer and button
-      targetF[k] = targetF[k] + posChange[k];         // set new target position
-      if (k == 0) {                                   // assume differential drive
-        target[k] = (long) targetF[k];                // motor 1 spins one way
-      }
-      else {
-        target[k] = (long) -targetF[k];               // motor 2 spins in opposite direction
-      }
-
-      // use PID to calculate control signal to motor
-      e[k] = target[k] - pos[k];                      // position error
-      dedt[k] = ((float) e[k]- ePrev[k]) / deltaT;    // derivative of error
-      eIntegral[k] = eIntegral[k] + e[k] * deltaT;    // integral of error (finite difference)
-      u[k] = kp * e[k] + kd * dedt[k] + ki * eIntegral[k]; // compute PID-based control signal
-      ePrev[k] = e[k];                                // store error for next control cycle
- 
-      // set direction based on computed control signal
-      dir[k] = 1;                                     // default to forward directon
-      if (u[k] < 0) {                                 // if control signal is negative
-        dir[k] = -1;                                  // set direction to reverse
-      }
-
-      // set speed based on computed control signal
-      u[k] = fabs(u[k]);                              // get magnitude of control signal
-      if (u[k] > cMaxSpeedInCounts) {                 // if control signal will saturate motor
-        u[k] = cMaxSpeedInCounts;                     // impose upper limit
-      }
-      pwm[k] = map(u[k], 0, cMaxSpeedInCounts, cMinPWM, cMaxPWM); // convert control signal to pwm
-      if (commsLossCount < cMaxDroppedPackets / 4) {
-        setMotor(dir[k], pwm[k], cIN1Chan[k], cIN2Chan[k]); // update motor speed and direction
-      }
-      else {
-        setMotor(0, 0, cIN1Chan[k], cIN2Chan[k]);     // stop motor
-      }
-#ifdef SERIAL_STUDIO
-      if (k == 0) {
-        printf("/*");                                 // start of sequence for Serial Studio parsing
-      }
-      printf("%d,%d,%d,%0.4f", target[k], pos[k], e[k], velMotor[k]);  // target, actual, error, velocity
-      if (k < cNumMotors - 1) {
-        printf(",");                                  // data separator for Serial Studio parsing
-      }
-      if (k == cNumMotors -1) {
-        printf("*/\r\n");                             // end of sequence for Serial Studio parsing
-      }
-#endif
+      pos[k] = encoder[k].pos;                          // read and store current motor position
     }
-    // send data from drive to controller
-    esp_err_t result = esp_now_send(receiverMacAddress, (uint8_t *) &driveData, sizeof(driveData));
-    if (result == ESP_OK) {                           // if sent successfully
-      digitalWrite(cStatusLED, 0);                    // turn off communucation status LED
+    interrupts();                                       // turn interrupts back on
+
+    unsigned long curTime = micros();                   // capture current time in microseconds
+    if (curTime - lastTime > 10000) {                   // wait ~10 ms
+      deltaT = ((float) (curTime - lastTime)) / 1.0e6;  // compute actual time interval in seconds
+      lastTime = curTime;                               // update start time for next control cycle
+      driveData.time = curTime;                         // update transmission time
+      for (int k = 0; k < cNumMotors; k++) {
+        velEncoder[k] = ((float) pos[k] - (float) lastEncoder[k]) / deltaT; // calculate velocity in counts/sec
+        lastEncoder[k] = pos[k];                        // store encoder count for next control cycle
+        velMotor[k] = velEncoder[k] / cCountsRev * 60;  // calculate motor shaft velocity in rpm
+
+        // update target for set direction
+        posChange[0] = (float) (inData.leftDir * inData.speed);   // update with maximum speed based on potentiometer and button
+        posChange[1] = (float) (inData.rightDir * inData.speed);  // update maximum speed based on potentiometer and button
+        targetF[k] = targetF[k] + posChange[k];         // set new target position
+        if (k == 0) {                                   // assume differential drive
+          target[k] = (long) targetF[k];                // motor 1 spins one way
+        }
+        else {
+          target[k] = (long) -targetF[k];               // motor 2 spins in opposite direction
+        }
+
+        // use PID to calculate control signal to motor
+        e[k] = target[k] - pos[k];                      // position error
+        dedt[k] = ((float) e[k]- ePrev[k]) / deltaT;    // derivative of error
+        eIntegral[k] = eIntegral[k] + e[k] * deltaT;    // integral of error (finite difference)
+        u[k] = kp * e[k] + kd * dedt[k] + ki * eIntegral[k]; // compute PID-based control signal
+        ePrev[k] = e[k];                                // store error for next control cycle
+  
+        // set direction based on computed control signal
+        dir[k] = 1;                                     // default to forward directon
+        if (u[k] < 0) {                                 // if control signal is negative
+          dir[k] = -1;                                  // set direction to reverse
+        }
+
+        // set speed based on computed control signal
+        u[k] = fabs(u[k]);                              // get magnitude of control signal
+        if (u[k] > cMaxSpeedInCounts) {                 // if control signal will saturate motor
+          u[k] = cMaxSpeedInCounts;                     // impose upper limit
+        }
+        pwm[k] = map(u[k], 0, cMaxSpeedInCounts, cMinPWM, cMaxPWM); // convert control signal to pwm
+        if (commsLossCount < cMaxDroppedPackets / 4) {
+          setMotor(dir[k], pwm[k], cIN1Chan[k], cIN2Chan[k]); // update motor speed and direction
+        }
+        else {
+          setMotor(0, 0, cIN1Chan[k], cIN2Chan[k]);     // stop motor
+        }
+   #ifdef SERIAL_STUDIO
+        if (k == 0) {
+          printf("/*");                                 // start of sequence for Serial Studio parsing
+        }
+        printf("%d,%d,%d,%0.4f", target[k], pos[k], e[k], velMotor[k]);  // target, actual, error, velocity
+        if (k < cNumMotors - 1) {
+          printf(",");                                  // data separator for Serial Studio parsing
+        }
+        if (k == cNumMotors -1) {
+          printf("*/\r\n");                             // end of sequence for Serial Studio parsing
+        }
+   #endif
+      }
+      // send data from drive to controller
+      esp_err_t result = esp_now_send(receiverMacAddress, (uint8_t *) &driveData, sizeof(driveData));
+      if (result == ESP_OK) {                           // if sent successfully
+        digitalWrite(cStatusLED, 0);                    // turn off communucation status LED
+      }
+      else {                                            // otherwise
+        digitalWrite(cStatusLED, 1);                    // turn on communication status LED
+      }
     }
-    else {                                            // otherwise
-      digitalWrite(cStatusLED, 1);                    // turn on communication status LED
+
+      uint16_t r, g, b, c;                                // RGBC values from TCS34725
+    // Calibration process. Determines the ambient light when the colour detector is not viewing any object. Only happens once.
+    if (totalAmb == 0) {                                                      // only on the first iteration because totalAmb is initialized as 0
+      ledcWrite(ci_ServoGrip, degreesToDutyCycle(i_ServoGripFinish));         // close the gripper
+      i_ServoGripPos = i_ServoGripFinish;                                     // update position
+      delay(1000);                                                            // allow some time for the gripper to settle
+      tcs.getRawData(&r, &g, &b, &c);                                         // read R,G,B,C
+      totalAmb = r + g + b;                                                   // totalAmb is summed from r,g,b
+      ledcWrite(ci_ServoGrip, degreesToDutyCycle(i_ServoGripStart));          // open the gripper
+      i_ServoGripPos = i_ServoGripStart;                                      // update position
     }
+
+
+    // Sorting initialization process. Determines what the object is if there is one and returns information accordingly.
+
+    if (inData.sortpickup && !pickup) {                                       // when button is pressed and it is not in a pickup process
+      ledcWrite(ci_ServoGrip, degreesToDutyCycle(i_ServoGripFinish));         // close the gripper
+      i_ServoGripPos = i_ServoGripFinish;                                     // update position
+      delay(1000);                                                            // allow some time for the gripper to settle
+      tcs.getRawData(&r, &g, &b, &c);                                         // read R,G,B,C
+      int scanned = r + g + b;                                                // scanned is the summation of the read values
+      if (abs(scanned - totalAmb) > 1) {                                     // if the difference between scanned and totalAmb is greater than 10, an object is considered to be present
+        pickup = true;                                                        // set pickup flag to true
+        if (scanned > 11) {                                                   // if scanned object summation is larger than 50 (the white rock), consider it as a bad object
+          badobj = true;                                                      
+        } else {                                                              // otherwise it is likely the green object as it has a low summation value
+          goodobj = true;
+        }
+      }
+      else {                                                                  // if little to no difference, open the gripper again
+        ledcWrite(ci_ServoGrip, degreesToDutyCycle(i_ServoGripStart));
+        i_ServoGripPos = i_ServoGripStart;
+      }
+      Serial.printf("Ambient: %d, Scanned: %d\n", totalAmb, scanned);         // Outputs information to serial monitor regarding ambient and scanned values
+    }
+
+    // Pickup process for a good object (the clear green rock)
+    if (pickup && goodobj){                                                   // if pickup and goodobj are both true
+      driveData.pickingup = true;                  
+      switch(ui_State) {                                                      // begin switch statemen
+        case 0: {                                                             // case 0: close the gripper
+          ul_CurMillis = millis();
+          if (ul_CurMillis - ul_PrevMillis > ul_GripDelay){                   // uses ul_GripDelay to limit the servo rotation
+            ul_PrevMillis = ul_CurMillis;
+            if (i_ServoGripPos < i_ServoGripFinish){                          // if the position is less than the finishing point
+              ledcWrite(ci_ServoGrip, degreesToDutyCycle(i_ServoGripPos));    // set the position of the motor
+              i_ServoGripPos++;                                               // increment by 1 to allow for smooth transition
+            }
+            if (i_ServoGripPos >= i_ServoGripFinish){                         // when grip position is at the finish point (closed) switch to next state
+              ui_State++;
+            }
+          }
+          break;
+        }
+        case 1: {                                                             // case 1: rotate the arm
+          ul_CurMillis = millis();
+          if (ul_CurMillis - ul_PrevMillis > ul_ArmDelay){                    // uses ul_ArmDelay to limit the servo rotation
+            ul_PrevMillis = ul_CurMillis;
+            if (i_ServoArmPos > i_ServoArmFinish){                            // if arm position is greater than finishing position (starting position is larger)
+              ledcWrite(ci_ServoArm, degreesToDutyCycle(i_ServoArmPos));      // set servo motor position
+              i_ServoArmPos--;                                                // decrement by 1 to allow for smooth transition
+            }
+            if (i_ServoArmPos <= i_ServoArmFinish){                           // when arm position is at the finsh point switch to next state
+              ui_State++;
+            }
+          }
+          break;
+        }
+        case 2: {                                                             // case 2: open the gripper, drop the object
+          ul_CurMillis = millis();
+          if (ul_CurMillis - ul_PrevMillis > ul_GripDelay){                   // uses ul_GripDelay to limit the servo rotation
+            ul_PrevMillis = ul_CurMillis;
+            if (i_ServoGripPos > i_ServoGripStart){                           // if the position is greater than the finishing point
+              ledcWrite(ci_ServoGrip, degreesToDutyCycle(i_ServoGripPos));    // set servo motor position
+              i_ServoGripPos--;                                               // decrement by 1 to allow for smooth transition
+            }
+            if (i_ServoGripPos <= i_ServoGripStart){                          // when grip position is back at the start point (opened) switch to next state
+              ui_State++;
+            }
+          }
+          break;
+        }
+        case 3: {                                                             // case 3: rotate the arm back to starting position
+          ul_CurMillis = millis();
+          if (ul_CurMillis - ul_PrevMillis > ul_ArmDelay){                    // uses ul_ArmDelay to limit the servo rotation
+            ul_PrevMillis = ul_CurMillis;
+            if (i_ServoArmPos < i_ServoArmStart){                             // if the position is less than the finishing point
+              ledcWrite(ci_ServoArm, degreesToDutyCycle(i_ServoArmPos));      // set servo motor position
+              i_ServoArmPos++;                                                // increment by 1 to allow for smooth transition
+            }
+            if (i_ServoArmPos >= i_ServoArmStart){                            // when the arm is back at the starting position
+              ui_State = 0;                                                   // reset ui_State and all flags
+              pickup = false;
+              badobj = false;
+              goodobj = false;
+              driveData.pickingup = false;
+            }
+          }
+          break;
+        }
+
+      }
+    }
+    // Pickup process for a bad object (white rock)
+    if (pickup && badobj){
+      driveData.pickingup = true;
+      switch(ui_State) {
+        case 0: {                                                             // case 0: close the gripper, same as good object process
+          ul_CurMillis = millis();
+          if (ul_CurMillis - ul_PrevMillis > ul_GripDelay){
+            ul_PrevMillis = ul_CurMillis;
+            if (i_ServoGripPos < i_ServoGripFinish){
+              ledcWrite(ci_ServoGrip, degreesToDutyCycle(i_ServoGripPos));
+              i_ServoGripPos++;
+            }
+            if (i_ServoGripPos >= i_ServoGripFinish){
+              ui_State++;
+            }
+          }
+          break;
+        }
+        case 1: {                                                             // case 1: rotate the arm, this time it will not rotate all the way to the finish position
+          ul_CurMillis = millis();
+          if (ul_CurMillis - ul_PrevMillis > ul_ArmDelay){
+            ul_PrevMillis = ul_CurMillis;
+            if (i_ServoArmPos > 100){                                         // Does not exceed 150 degrees to differentiate from goodobj process
+              ledcWrite(ci_ServoArm, degreesToDutyCycle(i_ServoArmPos));
+              i_ServoArmPos--;
+            }
+            if (i_ServoArmPos <= 100){                                        // When desired position is reached, go to next state
+              ui_State++;
+            }
+          }
+          break;
+        }
+        case 2: {                                                             // case 3: return to arm starting position, same as goodobj process
+          ul_CurMillis = millis();
+          if (ul_CurMillis - ul_PrevMillis > ul_ArmDelay){
+            ul_PrevMillis = ul_CurMillis;
+            if (i_ServoArmPos < i_ServoArmStart){
+              ledcWrite(ci_ServoArm, degreesToDutyCycle(i_ServoArmPos));
+              i_ServoArmPos++;
+            }
+            if (i_ServoArmPos >= i_ServoArmStart){                            // reset state and flags when finished
+              ui_State++;
+            }
+          }
+          break;
+        }
+        case 3: {                                                             // case 2: open the gripper, drop the object, same as goodobj process
+          ul_CurMillis = millis();
+          if (ul_CurMillis - ul_PrevMillis > ul_GripDelay){
+            ul_PrevMillis = ul_CurMillis;
+            if (i_ServoGripPos > i_ServoGripStart){
+              ledcWrite(ci_ServoGrip, degreesToDutyCycle(i_ServoGripPos));
+              i_ServoGripPos--;
+            }
+            if (i_ServoGripPos <= i_ServoGripStart){
+              ui_State = 0;
+              pickup = false;
+              badobj = false;
+              goodobj = false;
+              driveData.pickingup = false;
+            }
+          }
+          break;
+        }
+      }
+    }
+    runTime++;
   }
-
-    uint16_t r, g, b, c;                                // RGBC values from TCS34725
-  // Calibration process. Determines the ambient light when the colour detector is not viewing any object. Only happens once.
-  if (totalAmb == 0) {                                                      // only on the first iteration because totalAmb is initialized as 0
-    ledcWrite(ci_ServoGrip, degreesToDutyCycle(i_ServoGripFinish));         // close the gripper
-    i_ServoGripPos = i_ServoGripFinish;                                     // update position
-    delay(1000);                                                            // allow some time for the gripper to settle
-    tcs.getRawData(&r, &g, &b, &c);                                         // read R,G,B,C
-    totalAmb = r + g + b;                                                   // totalAmb is summed from r,g,b
-    ledcWrite(ci_ServoGrip, degreesToDutyCycle(i_ServoGripStart));          // open the gripper
-    i_ServoGripPos = i_ServoGripStart;                                      // update position
-  }
-
-
-  // Sorting initialization process. Determines what the object is if there is one and returns information accordingly.
-
-  if (inData.sortpickup && !pickup) {                                       // when button is pressed and it is not in a pickup process
-    ledcWrite(ci_ServoGrip, degreesToDutyCycle(i_ServoGripFinish));         // close the gripper
-    i_ServoGripPos = i_ServoGripFinish;                                     // update position
-    delay(1000);                                                            // allow some time for the gripper to settle
-    tcs.getRawData(&r, &g, &b, &c);                                         // read R,G,B,C
-    int scanned = r + g + b;                                                // scanned is the summation of the read values
-    if (abs(scanned - totalAmb) > 1) {                                     // if the difference between scanned and totalAmb is greater than 10, an object is considered to be present
-      pickup = true;                                                        // set pickup flag to true
-      if (scanned > 11) {                                                   // if scanned object summation is larger than 50 (the white rock), consider it as a bad object
-        badobj = true;                                                      
-      } else {                                                              // otherwise it is likely the green object as it has a low summation value
-        goodobj = true;
-      }
-    }
-    else {                                                                  // if little to no difference, open the gripper again
-      ledcWrite(ci_ServoGrip, degreesToDutyCycle(i_ServoGripStart));
-      i_ServoGripPos = i_ServoGripStart;
-    }
-    Serial.printf("Ambient: %d, Scanned: %d\n", totalAmb, scanned);         // Outputs information to serial monitor regarding ambient and scanned values
-  }
-
-  // Pickup process for a good object (the clear green rock)
-  if (pickup && goodobj){                                                   // if pickup and goodobj are both true
-    driveData.pickingup = true;                  
-    switch(ui_State) {                                                      // begin switch statemen
-      case 0: {                                                             // case 0: close the gripper
-        ul_CurMillis = millis();
-        if (ul_CurMillis - ul_PrevMillis > ul_GripDelay){                   // uses ul_GripDelay to limit the servo rotation
-          ul_PrevMillis = ul_CurMillis;
-          if (i_ServoGripPos < i_ServoGripFinish){                          // if the position is less than the finishing point
-            ledcWrite(ci_ServoGrip, degreesToDutyCycle(i_ServoGripPos));    // set the position of the motor
-            i_ServoGripPos++;                                               // increment by 1 to allow for smooth transition
-          }
-          if (i_ServoGripPos >= i_ServoGripFinish){                         // when grip position is at the finish point (closed) switch to next state
-            ui_State++;
-          }
-        }
-        break;
-      }
-      case 1: {                                                             // case 1: rotate the arm
-        ul_CurMillis = millis();
-        if (ul_CurMillis - ul_PrevMillis > ul_ArmDelay){                    // uses ul_ArmDelay to limit the servo rotation
-          ul_PrevMillis = ul_CurMillis;
-          if (i_ServoArmPos > i_ServoArmFinish){                            // if arm position is greater than finishing position (starting position is larger)
-            ledcWrite(ci_ServoArm, degreesToDutyCycle(i_ServoArmPos));      // set servo motor position
-            i_ServoArmPos--;                                                // decrement by 1 to allow for smooth transition
-          }
-          if (i_ServoArmPos <= i_ServoArmFinish){                           // when arm position is at the finsh point switch to next state
-            ui_State++;
-          }
-        }
-        break;
-      }
-      case 2: {                                                             // case 2: open the gripper, drop the object
-        ul_CurMillis = millis();
-        if (ul_CurMillis - ul_PrevMillis > ul_GripDelay){                   // uses ul_GripDelay to limit the servo rotation
-          ul_PrevMillis = ul_CurMillis;
-          if (i_ServoGripPos > i_ServoGripStart){                           // if the position is greater than the finishing point
-            ledcWrite(ci_ServoGrip, degreesToDutyCycle(i_ServoGripPos));    // set servo motor position
-            i_ServoGripPos--;                                               // decrement by 1 to allow for smooth transition
-          }
-          if (i_ServoGripPos <= i_ServoGripStart){                          // when grip position is back at the start point (opened) switch to next state
-            ui_State++;
-          }
-        }
-        break;
-      }
-      case 3: {                                                             // case 3: rotate the arm back to starting position
-        ul_CurMillis = millis();
-        if (ul_CurMillis - ul_PrevMillis > ul_ArmDelay){                    // uses ul_ArmDelay to limit the servo rotation
-          ul_PrevMillis = ul_CurMillis;
-          if (i_ServoArmPos < i_ServoArmStart){                             // if the position is less than the finishing point
-            ledcWrite(ci_ServoArm, degreesToDutyCycle(i_ServoArmPos));      // set servo motor position
-            i_ServoArmPos++;                                                // increment by 1 to allow for smooth transition
-          }
-          if (i_ServoArmPos >= i_ServoArmStart){                            // when the arm is back at the starting position
-            ui_State = 0;                                                   // reset ui_State and all flags
-            pickup = false;
-            badobj = false;
-            goodobj = false;
-            driveData.pickingup = false;
-          }
-        }
-        break;
-      }
-
-    }
-  }
-  // Pickup process for a bad object (white rock)
-  if (pickup && badobj){
-    driveData.pickingup = true;
-    switch(ui_State) {
-      case 0: {                                                             // case 0: close the gripper, same as good object process
-        ul_CurMillis = millis();
-        if (ul_CurMillis - ul_PrevMillis > ul_GripDelay){
-          ul_PrevMillis = ul_CurMillis;
-          if (i_ServoGripPos < i_ServoGripFinish){
-            ledcWrite(ci_ServoGrip, degreesToDutyCycle(i_ServoGripPos));
-            i_ServoGripPos++;
-          }
-          if (i_ServoGripPos >= i_ServoGripFinish){
-            ui_State++;
-          }
-        }
-        break;
-      }
-      case 1: {                                                             // case 1: rotate the arm, this time it will not rotate all the way to the finish position
-        ul_CurMillis = millis();
-        if (ul_CurMillis - ul_PrevMillis > ul_ArmDelay){
-          ul_PrevMillis = ul_CurMillis;
-          if (i_ServoArmPos > 100){                                         // Does not exceed 150 degrees to differentiate from goodobj process
-            ledcWrite(ci_ServoArm, degreesToDutyCycle(i_ServoArmPos));
-            i_ServoArmPos--;
-          }
-          if (i_ServoArmPos <= 100){                                        // When desired position is reached, go to next state
-            ui_State++;
-          }
-        }
-        break;
-      }
-      case 2: {                                                             // case 3: return to arm starting position, same as goodobj process
-        ul_CurMillis = millis();
-        if (ul_CurMillis - ul_PrevMillis > ul_ArmDelay){
-          ul_PrevMillis = ul_CurMillis;
-          if (i_ServoArmPos < i_ServoArmStart){
-            ledcWrite(ci_ServoArm, degreesToDutyCycle(i_ServoArmPos));
-            i_ServoArmPos++;
-          }
-          if (i_ServoArmPos >= i_ServoArmStart){                            // reset state and flags when finished
-            ui_State++;
-          }
-        }
-        break;
-      }
-      case 3: {                                                             // case 2: open the gripper, drop the object, same as goodobj process
-        ul_CurMillis = millis();
-        if (ul_CurMillis - ul_PrevMillis > ul_GripDelay){
-          ul_PrevMillis = ul_CurMillis;
-          if (i_ServoGripPos > i_ServoGripStart){
-            ledcWrite(ci_ServoGrip, degreesToDutyCycle(i_ServoGripPos));
-            i_ServoGripPos--;
-          }
-          if (i_ServoGripPos <= i_ServoGripStart){
-            ui_State = 0;
-            pickup = false;
-            badobj = false;
-            goodobj = false;
-            driveData.pickingup = false;
-          }
-        }
-        break;
-      }
-    }
+  else{
+    i_ServoArmPos = 70;
+    ledcWrite(ci_ServoArm, degreesToDutyCycle(i_ServoArmPos));
+    runTime = 0;
   }
   doHeartbeat();                                      // update heartbeat LED
 }
