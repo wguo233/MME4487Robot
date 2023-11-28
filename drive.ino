@@ -285,162 +285,160 @@ void loop() {
 
   // Sorting initialization process. Determines what the object is if there is one and returns information accordingly.
 
-    if (!inData.sortpickup && !pickup) {                                       // when button is pressed and it is not in a pickup process
-      driveData.pickingup == true;
-      ledcWrite(ci_ServoGrip, degreesToDutyCycle(i_ServoGripFinish));         // close the gripper
-      i_ServoGripPos = i_ServoGripFinish;                                     // update position
-      delay(1000);                                                            // allow some time for the gripper to settle
-      tcs.getRawData(&r, &g, &b, &c);                                         // read R,G,B,C
-      int scanned = r + g + b;                                                // scanned is the summation of the read values
-      if (abs(scanned - totalAmb) > 1) {                                     // if the difference between scanned and totalAmb is greater than 10, an object is considered to be present
-        pickup = true;                                                        // set pickup flag to true
-        if (scanned > 11) {                                                   // if scanned object summation is larger than 50 (the white rock), consider it as a bad object
-          badobj = true;                                                      
-        } else {                                                              // otherwise it is likely the green object as it has a low summation value
-          goodobj = true;
-        }
+  if (inData.sortpickup && !pickup) {                                       // when button is pressed and it is not in a pickup process
+    ledcWrite(ci_ServoGrip, degreesToDutyCycle(i_ServoGripFinish));         // close the gripper
+    i_ServoGripPos = i_ServoGripFinish;                                     // update position
+    delay(1000);                                                            // allow some time for the gripper to settle
+    tcs.getRawData(&r, &g, &b, &c);                                         // read R,G,B,C
+    int scanned = r + g + b;                                                // scanned is the summation of the read values
+    if (abs(scanned - totalAmb) > 1) {                                     // if the difference between scanned and totalAmb is greater than 10, an object is considered to be present
+      pickup = true;                                                        // set pickup flag to true
+      if (scanned > 11) {                                                   // if scanned object summation is larger than 50 (the white rock), consider it as a bad object
+        badobj = true;                                                      
+      } else {                                                              // otherwise it is likely the green object as it has a low summation value
+        goodobj = true;
       }
-      else {                                                                  // if little to no difference, open the gripper again
-        ledcWrite(ci_ServoGrip, degreesToDutyCycle(i_ServoGripStart));
-        i_ServoGripPos = i_ServoGripStart;
-        driveData.pickingup == false;
-      }
-      Serial.printf("Ambient: %d, Scanned: %d\n", totalAmb, scanned);         // Outputs information to serial monitor regarding ambient and scanned values
     }
+    else {                                                                  // if little to no difference, open the gripper again
+      ledcWrite(ci_ServoGrip, degreesToDutyCycle(i_ServoGripStart));
+      i_ServoGripPos = i_ServoGripStart;
+    }
+    Serial.printf("Ambient: %d, Scanned: %d\n", totalAmb, scanned);         // Outputs information to serial monitor regarding ambient and scanned values
+  }
 
-    // Pickup process for a good object (the clear green rock)
-    if (pickup && goodobj){                                                   // if pickup and goodobj are both true
-      driveData.pickingup == true;                  
-      switch(ui_State) {                                                      // begin switch statemen
-        case 0: {                                                             // case 0: close the gripper
-          ul_CurMillis = millis();
-          if (ul_CurMillis - ul_PrevMillis > ul_GripDelay){                   // uses ul_GripDelay to limit the servo rotation
-            ul_PrevMillis = ul_CurMillis;
-            if (i_ServoGripPos < i_ServoGripFinish){                          // if the position is less than the finishing point
-              ledcWrite(ci_ServoGrip, degreesToDutyCycle(i_ServoGripPos));    // set the position of the motor
-              i_ServoGripPos++;                                               // increment by 1 to allow for smooth transition
-            }
-            if (i_ServoGripPos >= i_ServoGripFinish){                         // when grip position is at the finish point (closed) switch to next state
-              ui_State++;
-            }
+  // Pickup process for a good object (the clear green rock)
+  if (pickup && goodobj){                                                   // if pickup and goodobj are both true
+    driveData.pickingup = true;                  
+    switch(ui_State) {                                                      // begin switch statemen
+      case 0: {                                                             // case 0: close the gripper
+        ul_CurMillis = millis();
+        if (ul_CurMillis - ul_PrevMillis > ul_GripDelay){                   // uses ul_GripDelay to limit the servo rotation
+          ul_PrevMillis = ul_CurMillis;
+          if (i_ServoGripPos < i_ServoGripFinish){                          // if the position is less than the finishing point
+            ledcWrite(ci_ServoGrip, degreesToDutyCycle(i_ServoGripPos));    // set the position of the motor
+            i_ServoGripPos++;                                               // increment by 1 to allow for smooth transition
           }
-          break;
-        }
-        case 1: {                                                             // case 1: rotate the arm
-          ul_CurMillis = millis();
-          if (ul_CurMillis - ul_PrevMillis > ul_ArmDelay){                    // uses ul_ArmDelay to limit the servo rotation
-            ul_PrevMillis = ul_CurMillis;
-            if (i_ServoArmPos > i_ServoArmFinish){                            // if arm position is greater than finishing position (starting position is larger)
-              ledcWrite(ci_ServoArm, degreesToDutyCycle(i_ServoArmPos));      // set servo motor position
-              i_ServoArmPos--;                                                // decrement by 1 to allow for smooth transition
-            }
-            if (i_ServoArmPos <= i_ServoArmFinish){                           // when arm position is at the finsh point switch to next state
-              ui_State++;
-            }
+          if (i_ServoGripPos >= i_ServoGripFinish){                         // when grip position is at the finish point (closed) switch to next state
+            ui_State++;
           }
-          break;
         }
-        case 2: {                                                             // case 2: open the gripper, drop the object
-          ul_CurMillis = millis();
-          if (ul_CurMillis - ul_PrevMillis > ul_GripDelay){                   // uses ul_GripDelay to limit the servo rotation
-            ul_PrevMillis = ul_CurMillis;
-            if (i_ServoGripPos > i_ServoGripStart){                           // if the position is greater than the finishing point
-              ledcWrite(ci_ServoGrip, degreesToDutyCycle(i_ServoGripPos));    // set servo motor position
-              i_ServoGripPos--;                                               // decrement by 1 to allow for smooth transition
-            }
-            if (i_ServoGripPos <= i_ServoGripStart){                          // when grip position is back at the start point (opened) switch to next state
-              ui_State++;
-            }
+        break;
+      }
+      case 1: {                                                             // case 1: rotate the arm
+        ul_CurMillis = millis();
+        if (ul_CurMillis - ul_PrevMillis > ul_ArmDelay){                    // uses ul_ArmDelay to limit the servo rotation
+          ul_PrevMillis = ul_CurMillis;
+          if (i_ServoArmPos > i_ServoArmFinish){                            // if arm position is greater than finishing position (starting position is larger)
+            ledcWrite(ci_ServoArm, degreesToDutyCycle(i_ServoArmPos));      // set servo motor position
+            i_ServoArmPos--;                                                // decrement by 1 to allow for smooth transition
           }
-          break;
-        }
-        case 3: {                                                             // case 3: rotate the arm back to starting position
-          ul_CurMillis = millis();
-          if (ul_CurMillis - ul_PrevMillis > ul_ArmDelay){                    // uses ul_ArmDelay to limit the servo rotation
-            ul_PrevMillis = ul_CurMillis;
-            if (i_ServoArmPos < i_ServoArmStart){                             // if the position is less than the finishing point
-              ledcWrite(ci_ServoArm, degreesToDutyCycle(i_ServoArmPos));      // set servo motor position
-              i_ServoArmPos++;                                                // increment by 1 to allow for smooth transition
-            }
-            if (i_ServoArmPos >= i_ServoArmStart){                            // when the arm is back at the starting position
-              ui_State = 0;                                                   // reset ui_State and all flags
-              pickup = false;
-              badobj = false;
-              goodobj = false;
-              driveData.pickingup == false;
-            }
+          if (i_ServoArmPos <= i_ServoArmFinish){                           // when arm position is at the finsh point switch to next state
+            ui_State++;
           }
-          break;
         }
+        break;
+      }
+      case 2: {                                                             // case 2: open the gripper, drop the object
+        ul_CurMillis = millis();
+        if (ul_CurMillis - ul_PrevMillis > ul_GripDelay){                   // uses ul_GripDelay to limit the servo rotation
+          ul_PrevMillis = ul_CurMillis;
+          if (i_ServoGripPos > i_ServoGripStart){                           // if the position is greater than the finishing point
+            ledcWrite(ci_ServoGrip, degreesToDutyCycle(i_ServoGripPos));    // set servo motor position
+            i_ServoGripPos--;                                               // decrement by 1 to allow for smooth transition
+          }
+          if (i_ServoGripPos <= i_ServoGripStart){                          // when grip position is back at the start point (opened) switch to next state
+            ui_State++;
+          }
+        }
+        break;
+      }
+      case 3: {                                                             // case 3: rotate the arm back to starting position
+        ul_CurMillis = millis();
+        if (ul_CurMillis - ul_PrevMillis > ul_ArmDelay){                    // uses ul_ArmDelay to limit the servo rotation
+          ul_PrevMillis = ul_CurMillis;
+          if (i_ServoArmPos < i_ServoArmStart){                             // if the position is less than the finishing point
+            ledcWrite(ci_ServoArm, degreesToDutyCycle(i_ServoArmPos));      // set servo motor position
+            i_ServoArmPos++;                                                // increment by 1 to allow for smooth transition
+          }
+          if (i_ServoArmPos >= i_ServoArmStart){                            // when the arm is back at the starting position
+            ui_State = 0;                                                   // reset ui_State and all flags
+            pickup = false;
+            badobj = false;
+            goodobj = false;
+            driveData.pickingup = false;
+          }
+        }
+        break;
+      }
 
+    }
+  }
+  // Pickup process for a bad object (white rock)
+  if (pickup && badobj){
+    driveData.pickingup = true;
+    switch(ui_State) {
+      case 0: {                                                             // case 0: close the gripper, same as good object process
+        ul_CurMillis = millis();
+        if (ul_CurMillis - ul_PrevMillis > ul_GripDelay){
+          ul_PrevMillis = ul_CurMillis;
+          if (i_ServoGripPos < i_ServoGripFinish){
+            ledcWrite(ci_ServoGrip, degreesToDutyCycle(i_ServoGripPos));
+            i_ServoGripPos++;
+          }
+          if (i_ServoGripPos >= i_ServoGripFinish){
+            ui_State++;
+          }
+        }
+        break;
+      }
+      case 1: {                                                             // case 1: rotate the arm, this time it will not rotate all the way to the finish position
+        ul_CurMillis = millis();
+        if (ul_CurMillis - ul_PrevMillis > ul_ArmDelay){
+          ul_PrevMillis = ul_CurMillis;
+          if (i_ServoArmPos > 100){                                         // Does not exceed 150 degrees to differentiate from goodobj process
+            ledcWrite(ci_ServoArm, degreesToDutyCycle(i_ServoArmPos));
+            i_ServoArmPos--;
+          }
+          if (i_ServoArmPos <= 100){                                        // When desired position is reached, go to next state
+            ui_State++;
+          }
+        }
+        break;
+      }
+      case 2: {                                                             // case 3: return to arm starting position, same as goodobj process
+        ul_CurMillis = millis();
+        if (ul_CurMillis - ul_PrevMillis > ul_ArmDelay){
+          ul_PrevMillis = ul_CurMillis;
+          if (i_ServoArmPos < i_ServoArmStart){
+            ledcWrite(ci_ServoArm, degreesToDutyCycle(i_ServoArmPos));
+            i_ServoArmPos++;
+          }
+          if (i_ServoArmPos >= i_ServoArmStart){                            // reset state and flags when finished
+            ui_State++;
+          }
+        }
+        break;
+      }
+      case 3: {                                                             // case 2: open the gripper, drop the object, same as goodobj process
+        ul_CurMillis = millis();
+        if (ul_CurMillis - ul_PrevMillis > ul_GripDelay){
+          ul_PrevMillis = ul_CurMillis;
+          if (i_ServoGripPos > i_ServoGripStart){
+            ledcWrite(ci_ServoGrip, degreesToDutyCycle(i_ServoGripPos));
+            i_ServoGripPos--;
+          }
+          if (i_ServoGripPos <= i_ServoGripStart){
+            ui_State = 0;
+            pickup = false;
+            badobj = false;
+            goodobj = false;
+            driveData.pickingup = false;
+          }
+        }
+        break;
       }
     }
-    // Pickup process for a bad object (white rock)
-    if (pickup && badobj){
-      driveData.pickingup == true;
-      switch(ui_State) {
-        case 0: {                                                             // case 0: close the gripper, same as good object process
-          ul_CurMillis = millis();
-          if (ul_CurMillis - ul_PrevMillis > ul_GripDelay){
-            ul_PrevMillis = ul_CurMillis;
-            if (i_ServoGripPos < i_ServoGripFinish){
-              ledcWrite(ci_ServoGrip, degreesToDutyCycle(i_ServoGripPos));
-              i_ServoGripPos++;
-            }
-            if (i_ServoGripPos >= i_ServoGripFinish){
-              ui_State++;
-            }
-          }
-          break;
-        }
-        case 1: {                                                             // case 1: rotate the arm, this time it will not rotate all the way to the finish position
-          ul_CurMillis = millis();
-          if (ul_CurMillis - ul_PrevMillis > ul_ArmDelay){
-            ul_PrevMillis = ul_CurMillis;
-            if (i_ServoArmPos > 100){                                         // Does not exceed 150 degrees to differentiate from goodobj process
-              ledcWrite(ci_ServoArm, degreesToDutyCycle(i_ServoArmPos));
-              i_ServoArmPos--;
-            }
-            if (i_ServoArmPos <= 100){                                        // When desired position is reached, go to next state
-              ui_State++;
-            }
-          }
-          break;
-        }
-        case 2: {                                                             // case 3: return to arm starting position, same as goodobj process
-          ul_CurMillis = millis();
-          if (ul_CurMillis - ul_PrevMillis > ul_ArmDelay){
-            ul_PrevMillis = ul_CurMillis;
-            if (i_ServoArmPos < i_ServoArmStart){
-              ledcWrite(ci_ServoArm, degreesToDutyCycle(i_ServoArmPos));
-              i_ServoArmPos++;
-            }
-            if (i_ServoArmPos >= i_ServoArmStart){                            // reset state and flags when finished
-              ui_State++;
-            }
-          }
-          break;
-        }
-        case 3: {                                                             // case 2: open the gripper, drop the object, same as goodobj process
-          ul_CurMillis = millis();
-          if (ul_CurMillis - ul_PrevMillis > ul_GripDelay){
-            ul_PrevMillis = ul_CurMillis;
-            if (i_ServoGripPos > i_ServoGripStart){
-              ledcWrite(ci_ServoGrip, degreesToDutyCycle(i_ServoGripPos));
-              i_ServoGripPos--;
-            }
-            if (i_ServoGripPos <= i_ServoGripStart){
-              ui_State = 0;
-              pickup = false;
-              badobj = false;
-              goodobj = false;
-              driveData.pickingup == false;
-            }
-          }
-          break;
-        }
-      }
-    }
+  }
   doHeartbeat();                                      // update heartbeat LED
 }
 
