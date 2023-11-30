@@ -26,6 +26,7 @@ struct ControlDataPacket {
   int speed;
   bool sortpickup;
   bool onOff;
+  bool dropoff;
 };
 
 // Drive data packet structure
@@ -63,6 +64,8 @@ const float ki = 0.2;                                 // integral gain for PID
 const float kd = 0.8;                                 // derivative gain for PID
 const int ci_ServoPin = 5;                          // GPIO pin for servo motor ARM
 const int ci_Servo1Pin = 4;                         // GPIO pin for servo motor GRIP
+const int ci_Servo2Pin = 15;                        // drop off servo
+const int ci_ServoDrop = 6;
 const int ci_ServoArm = 5;                           // PWM channel used for the RC servo motor
 const int ci_ServoGrip = 4;                          // PWM channel used for the RC servo motor
 const int cTCSLED = 23;                              // GPIO pin for LED on TCS34725
@@ -82,7 +85,9 @@ Encoder encoder[] = {{25, 26, 0},                     // encoder 0 on GPIO 25 an
 long target[] = {0, 0};                               // target encoder count for motor
 long lastEncoder[] = {0, 0};                          // encoder count at last control cycle
 float targetF[] = {0.0, 0.0};                         // target for motor as float
+bool sortcheck = false;
 bool pickup = false;                                 // boolean for whether pickup is in progress
+bool eject = false;
 bool badobj = false;                                 // bad object flag
 bool goodobj = false;                                // good object flag
 int totalAmb = 0;                                    // ambient light from colour sensor
@@ -122,6 +127,8 @@ void setup() {
   ledcSetup(ci_ServoArm, 50, 16);                                       // setup for channel for 50 Hz, 16-bit resolution
   ledcAttachPin(ci_Servo1Pin, ci_ServoGrip);                            // assign servo pin to servo channel
   ledcSetup(ci_ServoGrip, 50, 16);                                      // setup for channel for 50 Hz, 16-bit resolution
+  ledcAttachPin(ci_Servo2Pin, ci_ServoDrop);
+  ledcSetup(ci_ServoDrop, 50, 16);
   pinMode(cTCSLED, OUTPUT);                                             // configure GPIO for control of LED on TCS34725
  
   // setup motors with encoders
@@ -304,8 +311,7 @@ void loop() {
 
 
     // Sorting initialization process. Determines what the object is if there is one and returns information accordingly.
-
-    if (inData.sortpickup && !pickup) {                                       // when button is pressed and it is not in a pickup process
+     if (inData.sortpickup && !pickup) {                                       // when button is pressed and it is not in a pickup process
       ledcWrite(ci_ServoGrip, degreesToDutyCycle(i_ServoGripFinish));         // close the gripper
       i_ServoGripPos = i_ServoGripFinish;                                     // update position
       delay(1000);                                                            // allow some time for the gripper to settle
@@ -457,6 +463,18 @@ void loop() {
           }
           break;
         }
+      }
+    }
+    if (inData.dropoff){
+      eject = true;
+    }
+    if (eject){
+      ul_CurMillis = millis();
+      ledcWrite(ci_ServoDrop, degreesToDutyCycle(180));
+      if (ul_CurMillis - ul_PrevMillis >= 2000){
+        ul_PrevMillis = ul_CurMillis;
+        ledcWrite(ci_ServoDrop, degreesToDutyCycle(85));
+        eject = false;
       }
     }
   }
