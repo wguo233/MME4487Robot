@@ -49,7 +49,7 @@ const int cMaxDroppedPackets = 20;                    // maximum number of packe
 const int cPotPin = 34;                               // potentiometer pin
 const int cMaxChange = 14;                            // maximum increment in counts/cycle
 const int cPickupLED = 25;                            // pin for colour detector LED
-const int cStateLED = 33;
+const int cStateLED = 33;                             // LED for on or off state of the robot
 
 // Variables
 unsigned long lastHeartbeat = 0;                      // time of last heartbeat state change
@@ -59,9 +59,9 @@ Button buttonFwd = {14, 0, 0, false, true, true};     // forward, NO pushbutton 
 Button buttonRev = {12, 0, 0, false, true, true};     // reverse, NO pushbutton on GPIO 12, low state when pressed
 Button buttonLeft = {27, 0, 0, false, true, true};    // left button
 Button buttonRight = {13, 0, 0, false, true, true};   // right button
-Button buttonScan = {26, 0, 0, false, true, true};   // NO pushbutton on GPIO 13, low state when pressed. Used to inititate sorting
+Button buttonScan = {26, 0, 0, false, true, true};   //  Used to inititate sorting
 Button buttonState = {32, 0, 0, false, true, true};   // on off toggle
-Button buttonDropoff = {23, 0, 0, false, true, true};
+Button buttonDropoff = {23, 0, 0, false, true, true}; // eject and dropoff button
 int pressTime = 0;
 
 // REPLACE WITH MAC ADDRESS OF YOUR DRIVE ESP32
@@ -172,26 +172,26 @@ void loop() {
         controlData.rightDir = 1;
       }
     }
-    if (!buttonScan.state){
+    if (!buttonScan.state){                            // when button is pressed, initiate sorting process
       controlData.sortpickup = true;
     }
     else{
       controlData.sortpickup = false;
     }
-    if (!buttonDropoff.state){
+    if (!buttonDropoff.state){                         // when button is pressed, initiate drop off process
       controlData.dropoff = true;
     }
     else{
       controlData.dropoff = false;
     }
-    if (inData.pickingup){
+    if (inData.pickingup){                             // receives data from drive data packet. used to give feedback to controller by turning on and off an LED if the robot is in a pickup process
       digitalWrite(cPickupLED, true);
     }
     else{
       digitalWrite(cPickupLED, false);
     }
-    if (!buttonState.state){
-      if (pressTime == 0){
+    if (!buttonState.state){                           // if the button is pressed, toggles the on and off state of the robot
+      if (pressTime == 0){                             // only one instance is registered. holding the button does not constantly toggle the state
         controlData.onOff = !controlData.onOff;
       }
       pressTime++;
@@ -200,7 +200,7 @@ void loop() {
       pressTime = 0;
     }
 
-    if (controlData.onOff){
+    if (controlData.onOff){                            // if the robot is in the on state, turn on the state LED otherwise turn it off
       digitalWrite(cStateLED, true);
     }
     else{
