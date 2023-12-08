@@ -15,7 +15,7 @@ The controller features 7 buttons and 3 LEDs:
 - A button to drop off an onboard objects on the robot within the storage container.
 - The third LED is used to display ESPNOW status conditions with the robot.  
 
-The pick-up process:  
+The pick-up and sorting process:  
 1. On startup, the gripper will close and the colour detector will read RGB values and sum them. This will be the value of ambient light. Once finished, the gripper will open back up. This happens once.  
 2. When pushing the button, the gripper will close. Objects will be encapsulated if any are present.
 3. When the gripper is in the closed position, the colour detector will read R,G,B,C values.
