@@ -31,6 +31,7 @@ struct ControlDataPacket {
   int speed;
   bool sortpickup;
   bool onOff;
+  bool dropoff;
 };
 
 // Drive data packet structure
@@ -59,7 +60,8 @@ Button buttonRev = {12, 0, 0, false, true, true};     // reverse, NO pushbutton 
 Button buttonLeft = {27, 0, 0, false, true, true};    // left button
 Button buttonRight = {13, 0, 0, false, true, true};   // right button
 Button buttonScan = {26, 0, 0, false, true, true};   // NO pushbutton on GPIO 13, low state when pressed. Used to inititate sorting
-Button buttonState = {32, 0, 0, false, true, true};   
+Button buttonState = {32, 0, 0, false, true, true};   // on off toggle
+Button buttonDropoff = {23, 0, 0, false, true, true};
 int pressTime = 0;
 
 // REPLACE WITH MAC ADDRESS OF YOUR DRIVE ESP32
@@ -92,6 +94,8 @@ void setup() {
   attachInterruptArg(buttonScan.pin, buttonISR, &buttonScan, CHANGE); // Configure left pushbutton ISR to trigger on change
   pinMode(buttonState.pin, INPUT_PULLUP);               // configure GPIO for left button pin as an input with pullup resistor
   attachInterruptArg(buttonState.pin, buttonISR, &buttonState, CHANGE); // Configure left pushbutton ISR to trigger on change
+  pinMode(buttonDropoff.pin, INPUT_PULLUP);               // configure GPIO for left button pin as an input with pullup resistor
+  attachInterruptArg(buttonDropoff.pin, buttonISR, &buttonDropoff, CHANGE); // Configure left pushbutton ISR to trigger on change
   pinMode(cPotPin, INPUT);                            // potentiometer input config
 
   // Initialize ESP-NOW
@@ -174,13 +178,18 @@ void loop() {
     else{
       controlData.sortpickup = false;
     }
+    if (!buttonDropoff.state){
+      controlData.dropoff = true;
+    }
+    else{
+      controlData.dropoff = false;
+    }
     if (inData.pickingup){
       digitalWrite(cPickupLED, true);
     }
     else{
       digitalWrite(cPickupLED, false);
     }
-    
     if (!buttonState.state){
       if (pressTime == 0){
         controlData.onOff = !controlData.onOff;
