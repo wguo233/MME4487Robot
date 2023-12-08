@@ -1,5 +1,5 @@
 //
-//  MME 4487 Drive system controller
+//  MME 4487 Robot Controller
 //
 //  Language: Arduino (C++)
 //  Target:   ESP32
