@@ -185,16 +185,16 @@ void setup() {
 }
 
 void loop() {
-  if (inData.onOff){
-    if (runState == 0){
+  if (inData.onOff){                                     // if the robot is on
+    if (runState == 0){                                  // if the robot was recently in the off state
       ul_CurMillis = millis();
       if (ul_CurMillis - ul_PrevMillis > ul_ArmDelay){
         ul_PrevMillis = ul_CurMillis;
-        if (i_ServoArmPos < i_ServoArmStart){
+        if (i_ServoArmPos < i_ServoArmStart){                            // set the arm servo motor to the starting position
           ledcWrite(ci_ServoArm, degreesToDutyCycle(i_ServoArmPos));
           i_ServoArmPos++;
         }
-        if (i_ServoArmPos >= i_ServoArmStart){
+        if (i_ServoArmPos >= i_ServoArmStart){                            // once the servo arm is in the correct position, set runstate to 1 and the robot is ready to run
           runState = 1;
         }
       }
@@ -319,9 +319,9 @@ void loop() {
       int scanned = r + g + b;                                                // scanned is the summation of the read values
       if (abs(scanned - totalAmb) > 1) {                                     // if the difference between scanned and totalAmb is greater than 10, an object is considered to be present
         pickup = true;                                                        // set pickup flag to true
-        if (3 <= r && r <= 8 && 4 <= g && g <= 10 && 4 <= b && b <= 9){                                          // if scanned object summation is larger than 50 (the white rock), consider it as a bad object
+        if (3 <= r && r <= 8 && 4 <= g && g <= 10 && 4 <= b && b <= 9){     // if scanned object falls within the r,g,b ranges , consider it as a good object
           goodobj = true;                                                      
-        } else {                                                              // otherwise it is likely the green object as it has a low summation value
+        } else {                                                              // otherwise it is a bad object
           badobj = true;
         }
       }
@@ -465,20 +465,20 @@ void loop() {
         }
       }
     }
-    if (inData.dropoff){
-      eject = true;
+    if (inData.dropoff){                                                        // if dropoff from control data packet is true via a button press on the controller 
+      eject = true;                                                             // set eject boolean to true
     }
-    if (eject){
+    if (eject){                                                                 // if eject is true
       ul_CurMillis = millis();
-      ledcWrite(ci_ServoDrop, degreesToDutyCycle(180));
+      ledcWrite(ci_ServoDrop, degreesToDutyCycle(180));                         // open the floor of the storage container by rotating servo motor
       if (ul_CurMillis - ul_PrevMillis >= 2000){
         ul_PrevMillis = ul_CurMillis;
-        ledcWrite(ci_ServoDrop, degreesToDutyCycle(85));
-        eject = false;
+        ledcWrite(ci_ServoDrop, degreesToDutyCycle(85));                        // after 2 seconds, return back to original position
+        eject = false;                                                          // set eject to false as dropoff process is finished
       }
     }
   }
-  else{
+  else{                                                                         // in the off state, set servo arm to resting position
     ul_CurMillis = millis();
     if (ul_CurMillis - ul_PrevMillis > ul_ArmDelay){
       ul_PrevMillis = ul_CurMillis;
@@ -487,7 +487,7 @@ void loop() {
         i_ServoArmPos--;
       }
     }
-    runState = 0;
+    runState = 0;                                                               // set runState to 0
   }
   doHeartbeat();                                      // update heartbeat LED
 }
