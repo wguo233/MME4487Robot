@@ -7,7 +7,7 @@ An ESP32 microcontroller is used to control the robot and its motors, allowing i
 
 The controller features 7 buttons, 1 potentiometer and 3 LEDs:
 - 4 buttons are used for forward and reverse, as well as left and right turning. Pressing the left or right buttons on their own will cause the robot to turn on the spot. Pressing the left or right buttons in conjunction with the forward or reverse buttons will cause the robot to turn about one wheel.
-- A button to control the on and off state of the robot. An LED on the controller based on the robot's state is used to give feedback to the operator.
+- A button to control the on and off state of the robot. While in the off state, none of the other controller inputs will affect the robot. An LED on the controller based on the robot's state is used to give feedback to the operator.
 - A button to close the gripper and initiate the sorting process. Another LED is also used to provide feedback on the robot if it is in the process of picking up an object
 - A button to drop off an onboard objects on the robot within the storage container.
 - The third LED is used to display ESPNOW status conditions with the robot.
