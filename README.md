@@ -22,3 +22,5 @@ The pick-up and sorting process:
 6. If the R,G,B values fall within certain ranges, the robot will consider it as a desired object.
 7. For the desired object, the arm will rotate backwards towards the chassis and drop off the object, then rotate back to starting position.
 8. For the undesired object, the arm will rotate 90 degrees upwards, then return to starting position and let go of the object.
+
+The code for the controller is seen in controller.ino and the code for the robot is seen in drive.ino.  
