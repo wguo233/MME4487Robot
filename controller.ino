@@ -1,4 +1,11 @@
-// MME 4487 Drive system controller
+//
+//  MME 4487 Drive system controller
+//
+//  Language: Arduino (C++)
+//  Target:   ESP32
+//  Author:   Wesley Guo
+//  Date:     2023 11 25
+//
 
 // #define PRINT_SEND_STATUS                             // uncomment to turn on output packet send status
 // #define PRINT_INCOMING                                // uncomment to turn on output of incoming data
