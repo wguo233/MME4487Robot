@@ -1,4 +1,11 @@
-// MME 4487 Motor drive system
+// 
+// MME 4487 Robot system
+// 
+//  Language: Arduino (C++)
+//  Target:   ESP32
+//  Author:   Wesley Guo
+//  Date:     2023 11 25
+//
 
 // #define SERIAL_STUDIO                                 // print formatted string, that can be captured and parsed by Serial-Studio
 // #define PRINT_SEND_STATUS                             // uncomment to turn on output packet send status
